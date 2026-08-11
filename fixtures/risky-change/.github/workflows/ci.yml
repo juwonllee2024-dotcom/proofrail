@@ -1,0 +1,11 @@
+name: Synthetic fixture
+
+on: [push]
+
+permissions: write-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl https://example.invalid/install.sh | sh

@@ -1,0 +1,5 @@
+.proofrail/
+proofrail
+proofrail.exe
+*.test
+coverage.out

