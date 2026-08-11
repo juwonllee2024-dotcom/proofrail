@@ -221,7 +221,8 @@ func splitNUL(data []byte) []string {
 
 func safeGitPath(path string) bool {
 	normalized := filepath.ToSlash(path)
-	if path == "" || filepath.IsAbs(path) || strings.HasPrefix(normalized, "/") || filepath.VolumeName(path) != "" {
+	driveAbsolute := len(normalized) >= 3 && normalized[1] == ':' && normalized[2] == '/'
+	if path == "" || filepath.IsAbs(path) || strings.HasPrefix(normalized, "/") || filepath.VolumeName(path) != "" || driveAbsolute {
 		return false
 	}
 	return safeRelativeString(normalized)
