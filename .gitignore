@@ -1,5 +1,5 @@
 .proofrail/
-proofrail
-proofrail.exe
+/proofrail
+/proofrail.exe
 *.test
 coverage.out
