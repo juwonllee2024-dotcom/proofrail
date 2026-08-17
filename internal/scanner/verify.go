@@ -163,9 +163,7 @@ func loadVerifyConfig(root, configPath string) (VerifyConfig, error) {
 }
 
 func safeConfigPath(path string) bool {
-	normalized := filepath.ToSlash(path)
-	driveAbsolute := len(normalized) >= 3 && normalized[1] == ':' && normalized[2] == '/'
-	return path != "" && !filepath.IsAbs(path) && !strings.HasPrefix(normalized, "/") && filepath.VolumeName(path) == "" && !driveAbsolute && safeRelativeString(normalized)
+	return path != "" && !filepath.IsAbs(path) && filepath.VolumeName(path) == "" && safeRelativeString(path)
 }
 
 func safeConfigTarget(root, relative string) bool {

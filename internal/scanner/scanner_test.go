@@ -161,7 +161,7 @@ func TestScanReportsUnpinnedWorkflowActions(t *testing.T) {
 }
 
 func TestSafeGitPathRejectsTraversal(t *testing.T) {
-	for _, path := range []string{"../outside.txt", "/absolute.txt", "C:/absolute.txt", "..\\outside.txt"} {
+	for _, path := range []string{"../outside.txt", "/absolute.txt", "C:/absolute.txt", "C:\\absolute.txt", "..\\outside.txt"} {
 		if safeGitPath(path) {
 			t.Errorf("expected unsafe Git path to be rejected: %q", path)
 		}

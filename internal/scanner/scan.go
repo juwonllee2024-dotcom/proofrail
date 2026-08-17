@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -223,12 +224,10 @@ func splitNUL(data []byte) []string {
 }
 
 func safeGitPath(path string) bool {
-	normalized := filepath.ToSlash(path)
-	driveAbsolute := len(normalized) >= 3 && normalized[1] == ':' && normalized[2] == '/'
-	if path == "" || filepath.IsAbs(path) || strings.HasPrefix(normalized, "/") || filepath.VolumeName(path) != "" || driveAbsolute {
+	if path == "" || filepath.IsAbs(path) || filepath.VolumeName(path) != "" {
 		return false
 	}
-	return safeRelativeString(normalized)
+	return safeRelativeString(path)
 }
 
 func safeRelativePath(root, path string) (string, bool) {
@@ -240,8 +239,13 @@ func safeRelativePath(root, path string) (string, bool) {
 }
 
 func safeRelativeString(path string) bool {
-	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
-	return clean != ".." && !strings.HasPrefix(clean, "../") && clean != "."
+	clean := pathpkg.Clean(normalizePathSeparators(path))
+	driveAbsolute := len(clean) >= 3 && clean[1] == ':' && clean[2] == '/'
+	return clean != ".." && !strings.HasPrefix(clean, "../") && clean != "." && !strings.HasPrefix(clean, "/") && !driveAbsolute
+}
+
+func normalizePathSeparators(path string) string {
+	return strings.ReplaceAll(filepath.ToSlash(path), "\\", "/")
 }
 
 func ignoredDirectory(name string) bool {
