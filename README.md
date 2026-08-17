@@ -71,6 +71,18 @@ go run ./cmd/proofrail verify --repo . --run --trust-config --format markdown --
 
 Both flags are required. Commands use fixed argument arrays, run from a temporary repository copy with a reduced environment, have timeouts and output caps, and have no sandbox or network restriction. A trusted check can still execute arbitrary code or access external services.
 
+## Daily AI Project Publisher
+
+The repository includes an optional scheduled publisher at `.github/workflows/daily-project.yml`. It checks Vancouver local time at 05:00, asks an OpenAI-compatible Responses API for a small standard-library-only Go project, runs Proofrail plus `go test`, `go vet`, and `go build`, and creates a new public repository only after those checks pass. The generated repository name comes from the model and never includes the date by requirement.
+
+The workflow is skipped until these values are configured in GitHub repository settings:
+
+- Secret `OPENAI_API_KEY`
+- Repository variable `OPENAI_MODEL`
+- Secret `REPO_PUBLISH_TOKEN` with permission to create public repositories
+
+Never commit or paste either secret into an issue, workflow file, or chat. The publisher refuses path traversal, duplicate names, secret-like content, external Go dependencies, network/process capabilities, oversized projects, and generated `.github` files. These checks reduce risk but do not constitute human review or a sandbox; fully automatic public publishing can still publish an unsuitable project.
+
 ## What It Checks
 
 - Secret-like values, with matched values redacted
@@ -119,9 +131,8 @@ The tests create temporary Git repositories and use synthetic values at runtime.
 ## Roadmap
 
 1. Add more package-manager and workflow detectors.
-2. Add GitHub Action packaging with read-only permissions.
-3. Add optional offline OSV evidence.
-4. Design and test platform-specific sandbox backends before enabling stronger isolation.
+2. Add optional offline OSV evidence.
+3. Design and test platform-specific sandbox backends before enabling stronger isolation.
 
 ## Contributing
 

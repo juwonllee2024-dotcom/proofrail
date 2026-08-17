@@ -19,5 +19,7 @@ Do not include live credentials or private source code. Redact them before sendi
 - No raw matched secret values in static findings; trusted command output uses capped, best-effort redaction.
 - Fixed argument arrays for Git subprocesses.
 - Trusted verification runs from a temporary copy with a reduced environment, bounded output, and a timeout, but is not a sandbox.
+- The daily publisher keeps API and repository-creation credentials in GitHub Secrets and does not expose them to generated project tests.
+- Automatically generated public repositories are not human-reviewed; CI results do not certify generated code as safe.
 - Explicit documentation of unsupported isolation guarantees.
 - Security regression tests for parser, path, and redaction changes.

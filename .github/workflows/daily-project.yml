@@ -1,0 +1,134 @@
+name: Daily Project Publisher
+
+on:
+  schedule:
+    # GitHub cron is UTC. The two entries cover Vancouver standard/DST time;
+    # the job checks the local hour so only one of them publishes.
+    - cron: '0 12 * * *'
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-project-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out publisher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check Vancouver schedule
+        id: schedule
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$(TZ=America/Vancouver date +%H)" = "05" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Not 05:00 in Vancouver; skipping the duplicate UTC schedule."
+          fi
+
+      - name: Check publisher configuration
+        id: config
+        if: steps.schedule.outputs.run == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          REPO_PUBLISH_TOKEN: ${{ secrets.REPO_PUBLISH_TOKEN }}
+        shell: bash
+        run: |
+          missing=0
+          for name in OPENAI_API_KEY OPENAI_MODEL REPO_PUBLISH_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::warning::$name is not configured; daily publishing will be skipped."
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 0 ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.config.outputs.ready == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: Generate project
+        if: steps.config.outputs.ready == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          DAILY_PROJECT_SEED: ${{ github.run_id }}
+          DAILY_PROJECT_DIR: ${{ runner.temp }}/daily-project
+          DAILY_PROJECT_METADATA: ${{ runner.temp }}/daily-project.json
+        run: python3 scripts/daily_project.py
+
+      - name: Inspect generated project
+        if: steps.config.outputs.ready == 'true'
+        env:
+          DAILY_PROJECT_DIR: ${{ runner.temp }}/daily-project
+        run: |
+          go run ./cmd/proofrail inspect \
+            --repo "$DAILY_PROJECT_DIR" \
+            --all \
+            --format json \
+            --output "$DAILY_PROJECT_DIR/proofrail-report.json" \
+            --fail-on high
+
+      - name: Test generated project
+        if: steps.config.outputs.ready == 'true'
+        working-directory: ${{ runner.temp }}/daily-project
+        run: go test ./...
+
+      - name: Vet generated project
+        if: steps.config.outputs.ready == 'true'
+        working-directory: ${{ runner.temp }}/daily-project
+        run: go vet ./...
+
+      - name: Build generated project
+        if: steps.config.outputs.ready == 'true'
+        working-directory: ${{ runner.temp }}/daily-project
+        run: go build ./...
+
+      - name: Publish new public repository
+        if: steps.config.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.REPO_PUBLISH_TOKEN }}
+          DAILY_PROJECT_DIR: ${{ runner.temp }}/daily-project
+          DAILY_PROJECT_METADATA: ${{ runner.temp }}/daily-project.json
+          OWNER: ${{ github.repository_owner }}
+        shell: bash
+        run: |
+          name="$(python3 -c 'import json, os; print(json.load(open(os.environ["DAILY_PROJECT_METADATA"], encoding="utf-8"))["name"])')"
+          description="$(python3 -c 'import json, os; print(json.load(open(os.environ["DAILY_PROJECT_METADATA"], encoding="utf-8"))["description"])')"
+          if gh repo view "$OWNER/$name" >/dev/null 2>&1; then
+            echo "A repository named $OWNER/$name already exists; refusing to overwrite it."
+            exit 1
+          fi
+          git -C "$DAILY_PROJECT_DIR" init -b main
+          git -C "$DAILY_PROJECT_DIR" config user.name "github-actions[bot]"
+          git -C "$DAILY_PROJECT_DIR" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$DAILY_PROJECT_DIR" add --all
+          git -C "$DAILY_PROJECT_DIR" commit -m "feat: create $name"
+          gh repo create "$OWNER/$name" \
+            --public \
+            --source "$DAILY_PROJECT_DIR" \
+            --remote origin \
+            --push \
+            --description "$description"

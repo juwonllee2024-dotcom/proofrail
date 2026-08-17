@@ -24,6 +24,7 @@ The test suite creates temporary Git repositories and exercises these cases:
 - Inline suppressions are explicit and counted rather than silently discarded.
 - Verification commands are skipped by default and require both explicit execution flags.
 - Trusted verification commands run from a temporary copy, redact seeded output, and honor timeouts.
+- The scheduled publisher validates generated project paths, content limits, dependency restrictions, and generated CI inputs before publication.
 
 Run the experiment with:
 
@@ -38,6 +39,8 @@ go run ./cmd/proofrail inspect --repo fixtures/clean-change --fail-on high
 The synthetic gate passes. The risky fixture produces eight findings, including four high-severity findings. The clean fixture produces no findings. The test suite confirms that a runtime-generated secret is absent from the JSON report.
 
 The verification command without `--run` records checks as skipped and does not execute fixture content. Runtime tests use the test binary as a controlled helper; this is not a complete sandbox or external user validation. Before a public launch, the project still needs testing on real repositories and feedback from developers who use AI coding tools.
+
+The daily publisher is intentionally disabled until its GitHub Secrets and repository variable are configured. Its two UTC schedule entries account for Vancouver daylight-saving changes, and a local-time guard prevents duplicate runs.
 
 ## Invalidation Criteria
 

@@ -3,3 +3,5 @@
 /proofrail.exe
 *.test
 coverage.out
+__pycache__/
+*.pyc
