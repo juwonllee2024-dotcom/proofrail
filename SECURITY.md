@@ -15,8 +15,9 @@ Do not include live credentials or private source code. Redact them before sendi
 ## Security Design Commitments
 
 - No source telemetry by default.
-- No automatic execution of repository commands in the static scanner.
-- No raw secret values in reports.
+- No automatic execution of repository commands in the static scanner; verification requires both `--run` and `--trust-config`.
+- No raw matched secret values in static findings; trusted command output uses capped, best-effort redaction.
 - Fixed argument arrays for Git subprocesses.
+- Trusted verification runs from a temporary copy with a reduced environment, bounded output, and a timeout, but is not a sandbox.
 - Explicit documentation of unsupported isolation guarantees.
 - Security regression tests for parser, path, and redaction changes.

@@ -23,6 +23,8 @@ var (
 	dangerousCommandPattern   = regexp.MustCompile(`(?i)(?:rm\s+-rf\s+/(?:\s|$)|remove-item\b[^\r\n]*-recurse|git\s+push\b[^\r\n]*--force|curl\b[^\r\n|]+\|\s*(?:sh|bash)|powershell(?:\.exe)?\b[^\r\n]*-(?:enc|encodedcommand)\b)`) // proofrail:ignore execution.dangerous-command
 	workflowWritePattern      = regexp.MustCompile(`(?i)^\s*(?:contents|pull-requests|issues|id-token)\s*:\s*write\s*$`)
 	workflowWriteAllPattern   = regexp.MustCompile(`(?i)\bpermissions\s*:\s*write-all\b`)
+	workflowUsesPattern       = regexp.MustCompile(`(?i)^\s*(?:-\s*)?uses\s*:\s*([a-z0-9_.-]+/[a-z0-9_./-]+)@([^\s#]+)`)
+	commitSHAPattern          = regexp.MustCompile(`(?i)^[0-9a-f]{40}$`)
 	placeholderVersionPattern = regexp.MustCompile(`(?i)"[^"]+"\s*:\s*"(?:(?:0\.0\.0(?:-[^"]+)?)|(?:999(?:\.\d+){0,2})|[^"]*-not-real)"`)
 	exactVersionPattern       = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	suppressionPattern        = regexp.MustCompile(`(?i)proofrail:ignore\s+([a-z0-9._-]+|all)`)
@@ -80,6 +82,7 @@ func Scan(repo string, options Options) (Report, error) {
 		Files:      records(files),
 		Findings:   findings,
 		Suppressed: suppressions,
+		Checks:     []CheckResult{},
 	}
 	report.Summary = summarize(report.Files, report.Findings, len(report.Suppressed))
 	return report, nil
@@ -346,6 +349,11 @@ func scanFile(path string, data []byte) ([]Finding, []Suppression) {
 		}
 		if isWorkflow && (workflowWritePattern.MatchString(line) || workflowWriteAllPattern.MatchString(line)) {
 			add("workflow.write-permission", SeverityHigh, "A workflow grants write-capable permissions.", "Use the narrowest read-only permissions and grant write access only to an isolated, reviewed job.", "permission value recorded without repository content")
+		}
+		if isWorkflow {
+			if match := workflowUsesPattern.FindStringSubmatch(line); len(match) == 3 && !strings.HasPrefix(match[1], "./") && !strings.HasPrefix(match[1], "../") && !commitSHAPattern.MatchString(match[2]) {
+				add("workflow.unpinned-action", SeverityMedium, "A third-party workflow action is not pinned to a full commit SHA.", "Pin the action to a reviewed 40-character commit SHA and update it intentionally.", "action reference recorded without repository content")
+			}
 		}
 		if isPackageFile && placeholderVersionPattern.MatchString(line) {
 			add("dependency.placeholder-version", SeverityMedium, "A dependency version looks like a placeholder or test sentinel.", "Verify the version against its registry and lock the intended dependency graph.", "version value redacted")

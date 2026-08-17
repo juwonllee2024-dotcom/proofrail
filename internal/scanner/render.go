@@ -35,8 +35,12 @@ func renderText(report Report) string {
 	fmt.Fprintf(&output, "Proofrail %s\n", report.Tool.Version)
 	fmt.Fprintf(&output, "Scope: %s\n", report.Scope)
 	fmt.Fprintf(&output, "Files: %d  Findings: %d  High: %d  Medium: %d  Low: %d  Suppressed: %d\n", report.Summary.Files, report.Summary.Findings, report.Summary.High+report.Summary.Critical, report.Summary.Medium, report.Summary.Low, report.Summary.Suppressed)
+	if report.Summary.Checks > 0 {
+		fmt.Fprintf(&output, "Checks: %d  Passed: %d  Failed: %d  Skipped: %d\n", report.Summary.Checks, report.Summary.Passed, report.Summary.Failed, report.Summary.Skipped)
+	}
 	if len(report.Findings) == 0 {
 		output.WriteString("No findings.\n")
+		writeTextChecks(&output, report.Checks)
 		return output.String()
 	}
 	output.WriteString("\nFindings:\n")
@@ -52,7 +56,27 @@ func renderText(report Report) string {
 			fmt.Fprintf(&output, "  Evidence: %s\n", finding.Evidence)
 		}
 	}
+	writeTextChecks(&output, report.Checks)
 	return output.String()
+}
+
+func writeTextChecks(output *strings.Builder, checks []CheckResult) {
+	if len(checks) == 0 {
+		return
+	}
+	output.WriteString("\nVerification checks:\n")
+	for _, check := range checks {
+		fmt.Fprintf(output, "[%s] %s (%dms)\n", strings.ToUpper(check.Status), check.ID, check.DurationMS)
+		if check.Error != "" {
+			fmt.Fprintf(output, "  %s\n", check.Error)
+		}
+		if check.Stdout != "" {
+			fmt.Fprintf(output, "  stdout: %s\n", strings.ReplaceAll(check.Stdout, "\n", "\\n"))
+		}
+		if check.Stderr != "" {
+			fmt.Fprintf(output, "  stderr: %s\n", strings.ReplaceAll(check.Stderr, "\n", "\\n"))
+		}
+	}
 }
 
 func renderMarkdown(report Report) string {
@@ -64,6 +88,9 @@ func renderMarkdown(report Report) string {
 	fmt.Fprintf(&output, "- Findings: `%d`\n", report.Summary.Findings)
 	fmt.Fprintf(&output, "- High or critical: `%d`\n", report.Summary.High+report.Summary.Critical)
 	fmt.Fprintf(&output, "- Suppressed by inline directive: `%d`\n", report.Summary.Suppressed)
+	if report.Summary.Checks > 0 {
+		fmt.Fprintf(&output, "- Verification checks: `%d` (`%d` passed, `%d` failed, `%d` skipped)\n", report.Summary.Checks, report.Summary.Passed, report.Summary.Failed, report.Summary.Skipped)
+	}
 
 	output.WriteString("\n## Files\n\n| Path | Status | Size | Scanned |\n| --- | --- | ---: | :---: |\n")
 	for _, file := range report.Files {
@@ -73,6 +100,7 @@ func renderMarkdown(report Report) string {
 	output.WriteString("\n## Findings\n")
 	if len(report.Findings) == 0 {
 		output.WriteString("\nNo findings.\n")
+		writeMarkdownChecks(&output, report.Checks)
 		return output.String()
 	}
 	for _, finding := range report.Findings {
@@ -88,7 +116,33 @@ func renderMarkdown(report Report) string {
 			fmt.Fprintf(&output, "**Evidence:** %s\n", finding.Evidence)
 		}
 	}
+	writeMarkdownChecks(&output, report.Checks)
 	return output.String()
+}
+
+func writeMarkdownChecks(output *strings.Builder, checks []CheckResult) {
+	if len(checks) == 0 {
+		return
+	}
+	output.WriteString("\n## Verification Checks\n\n| ID | Status | Duration |\n| --- | --- | ---: |\n")
+	for _, check := range checks {
+		fmt.Fprintf(output, "| `%s` | %s | %dms |\n", markdownCode(check.ID), check.Status, check.DurationMS)
+	}
+	for _, check := range checks {
+		if check.Stdout == "" && check.Stderr == "" && check.Error == "" {
+			continue
+		}
+		fmt.Fprintf(output, "\n### `%s` details\n", markdownCode(check.ID))
+		if check.Error != "" {
+			fmt.Fprintf(output, "\n**Error:** %s\n", check.Error)
+		}
+		if check.Stdout != "" {
+			fmt.Fprintf(output, "\n**stdout:**\n\n```text\n%s\n```\n", markdownOutput(check.Stdout))
+		}
+		if check.Stderr != "" {
+			fmt.Fprintf(output, "\n**stderr:**\n\n```text\n%s\n```\n", markdownOutput(check.Stderr))
+		}
+	}
 }
 
 type sarifReport struct {
@@ -208,4 +262,8 @@ func markdownTable(value string) string {
 
 func markdownCode(value string) string {
 	return strings.ReplaceAll(value, "`", "'")
+}
+
+func markdownOutput(value string) string {
+	return strings.ReplaceAll(value, "```", "` ` `")
 }

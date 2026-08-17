@@ -6,7 +6,7 @@ Proofrail inspects a Git change set and produces a human-readable or machine-rea
 
 It is designed for developers who use AI coding tools and want a provider-neutral review artifact without sending source code to a service.
 
-> Current status: validation spike. The scanner is read-only. Runtime command execution, remote pull-request integration, and sandbox backends are not implemented.
+> Current status: validation spike. Static inspection remains the default. An explicit, trusted verification runner is available, but it is not a sandbox and remote pull-request integration is not implemented.
 
 ## Five-Minute Quick Start
 
@@ -44,6 +44,33 @@ go run ./cmd/proofrail inspect --repo fixtures/risky-change --fail-on none
 
 The fixture intentionally produces findings. It contains no real credentials and no command is run by Proofrail.
 
+## Opt-In Verification
+
+Add a versioned `.proofrail.yml` to describe checks:
+
+```yaml
+version: 1
+checks:
+  - id: unit
+    program: go
+    args: [test, ./...]
+    timeout_seconds: 120
+```
+
+Inspect the change and record configured checks without executing them:
+
+```text
+go run ./cmd/proofrail verify --repo . --format markdown --fail-on high
+```
+
+Run checks only when the repository and configuration are trusted:
+
+```text
+go run ./cmd/proofrail verify --repo . --run --trust-config --format markdown --fail-on high
+```
+
+Both flags are required. Commands use fixed argument arrays, run from a temporary repository copy with a reduced environment, have timeouts and output caps, and have no sandbox or network restriction. A trusted check can still execute arbitrary code or access external services.
+
 ## What It Checks
 
 - Secret-like values, with matched values redacted
@@ -51,6 +78,7 @@ The fixture intentionally produces findings. It contains no real credentials and
 - Downloaded content piped into shell interpreters
 - Destructive commands and force pushes
 - GitHub Actions write permissions
+- GitHub Actions that are not pinned to full commit SHAs
 - Suspicious dependency placeholder versions
 - Direct dependency and `package-lock.json` drift
 - Instruction-like text treated as untrusted repository data
@@ -61,8 +89,8 @@ The fixture intentionally produces findings. It contains no real credentials and
 - Static inspection is the default and does not execute repository content.
 - Git arguments are passed as fixed argument arrays, not through a shell.
 - Symlinks, binary files, oversized files, and ignored build directories are not scanned.
-- Reports never include matched secret values or source excerpts.
-- No network request or telemetry is required.
+- Static findings never include matched secret values or source excerpts; verification output is capped and best-effort redacted.
+- No network request or telemetry is required for static inspection. Trusted verification commands may use the network.
 - The report is evidence, not a correctness or security certification.
 
 This spike does not provide a complete sandbox. Do not interpret it as protection against arbitrary code execution in a hostile repository.
@@ -90,11 +118,10 @@ The tests create temporary Git repositories and use synthetic values at runtime.
 
 ## Roadmap
 
-1. Add a versioned local policy file and explicit check runner.
-2. Add more package-manager and workflow detectors.
-3. Add GitHub Action packaging with read-only permissions.
-4. Add optional offline OSV evidence.
-5. Design and test platform-specific sandbox backends before enabling execution.
+1. Add more package-manager and workflow detectors.
+2. Add GitHub Action packaging with read-only permissions.
+3. Add optional offline OSV evidence.
+4. Design and test platform-specific sandbox backends before enabling stronger isolation.
 
 ## Contributing
 

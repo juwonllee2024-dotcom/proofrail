@@ -7,7 +7,7 @@ import (
 
 const (
 	ToolVersion   = "0.1.0-spike"
-	SchemaVersion = "0.1"
+	SchemaVersion = "0.2"
 )
 
 type Severity string
@@ -62,6 +62,7 @@ type Report struct {
 	Files         []FileRecord  `json:"files"`
 	Findings      []Finding     `json:"findings"`
 	Suppressed    []Suppression `json:"suppressed"`
+	Checks        []CheckResult `json:"checks"`
 	Summary       Summary       `json:"summary"`
 }
 
@@ -94,6 +95,29 @@ type Suppression struct {
 	Line   int    `json:"line"`
 }
 
+type CheckConfig struct {
+	ID             string   `yaml:"id" json:"id"`
+	Program        string   `yaml:"program" json:"program"`
+	Args           []string `yaml:"args" json:"args"`
+	TimeoutSeconds int      `yaml:"timeout_seconds" json:"timeout_seconds"`
+}
+
+type VerifyConfig struct {
+	Version int           `yaml:"version" json:"version"`
+	Checks  []CheckConfig `yaml:"checks" json:"checks"`
+}
+
+type CheckResult struct {
+	ID         string   `json:"id"`
+	Command    []string `json:"command"`
+	Status     string   `json:"status"`
+	ExitCode   int      `json:"exit_code,omitempty"`
+	DurationMS int64    `json:"duration_ms"`
+	Stdout     string   `json:"stdout,omitempty"`
+	Stderr     string   `json:"stderr,omitempty"`
+	Error      string   `json:"error,omitempty"`
+}
+
 type Summary struct {
 	Files      int `json:"files"`
 	Findings   int `json:"findings"`
@@ -102,6 +126,10 @@ type Summary struct {
 	High       int `json:"high"`
 	Critical   int `json:"critical"`
 	Suppressed int `json:"suppressed"`
+	Checks     int `json:"checks"`
+	Passed     int `json:"checks_passed"`
+	Failed     int `json:"checks_failed"`
+	Skipped    int `json:"checks_skipped"`
 }
 
 func (r Report) HasSeverityAtLeast(threshold Severity) bool {
@@ -110,6 +138,15 @@ func (r Report) HasSeverityAtLeast(threshold Severity) bool {
 	}
 	for _, finding := range r.Findings {
 		if finding.Severity.Rank() >= threshold.Rank() {
+			return true
+		}
+	}
+	return false
+}
+
+func (r Report) HasFailedChecks() bool {
+	for _, check := range r.Checks {
+		if check.Status == "failed" || check.Status == "timed_out" || check.Status == "error" {
 			return true
 		}
 	}

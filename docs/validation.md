@@ -11,6 +11,7 @@ The test suite creates temporary Git repositories and exercises these cases:
 - Secret-like values are detected and redacted.
 - Unchanged committed files are excluded from a change-set scan.
 - Risky workflow permissions are reported.
+- Unpinned third-party workflow actions are reported while full-SHA and local actions are allowed.
 - Downloaded shell commands are reported without execution.
 - Prompt-injection-like repository text is treated as data.
 - Suspicious dependency versions and lockfile drift are reported.
@@ -21,6 +22,8 @@ The test suite creates temporary Git repositories and exercises these cases:
 - JSON output is deterministic.
 - SARIF output has the expected schema and severity mapping.
 - Inline suppressions are explicit and counted rather than silently discarded.
+- Verification commands are skipped by default and require both explicit execution flags.
+- Trusted verification commands run from a temporary copy, redact seeded output, and honor timeouts.
 
 Run the experiment with:
 
@@ -34,7 +37,7 @@ go run ./cmd/proofrail inspect --repo fixtures/clean-change --fail-on high
 
 The synthetic gate passes. The risky fixture produces eight findings, including four high-severity findings. The clean fixture produces no findings. The test suite confirms that a runtime-generated secret is absent from the JSON report.
 
-This is not external user validation. Before a public launch, the project still needs testing on real repositories and feedback from developers who use AI coding tools.
+The verification command without `--run` records checks as skipped and does not execute fixture content. Runtime tests use the test binary as a controlled helper; this is not a complete sandbox or external user validation. Before a public launch, the project still needs testing on real repositories and feedback from developers who use AI coding tools.
 
 ## Invalidation Criteria
 

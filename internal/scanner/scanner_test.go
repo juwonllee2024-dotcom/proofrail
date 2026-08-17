@@ -3,11 +3,15 @@ package scanner
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestScanRedactsSecretsAndDetectsSeededRisks(t *testing.T) {
@@ -134,6 +138,28 @@ func TestScanReportsDestructiveCommandWithoutExecutingIt(t *testing.T) {
 	}
 }
 
+func TestScanReportsUnpinnedWorkflowActions(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, ".github/workflows/ci.yml", "name: CI\njobs:\n  build:\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-go@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n      - uses: ./.github/actions/local@main\n")
+
+	report, err := Scan(root, Options{MaxFileBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, finding := range report.Findings {
+		if finding.RuleID == "workflow.unpinned-action" {
+			count++
+			if finding.Severity != SeverityMedium || finding.Line != 5 {
+				t.Fatalf("unexpected unpinned action finding: %#v", finding)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected one unpinned third-party action, got %#v", report.Findings)
+	}
+}
+
 func TestSafeGitPathRejectsTraversal(t *testing.T) {
 	for _, path := range []string{"../outside.txt", "/absolute.txt", "C:/absolute.txt", "..\\outside.txt"} {
 		if safeGitPath(path) {
@@ -225,9 +251,183 @@ func TestCLIWritesJSONReportAndReturnsFailureForHighFinding(t *testing.T) {
 	if ExitCode(err) != 1 {
 		t.Fatalf("expected exit code 1, got %d and error %v", ExitCode(err), err)
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"schema_version": "0.1"`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"schema_version": "0.2"`)) {
 		t.Fatalf("expected JSON report, got %s", stdout.String())
 	}
+}
+
+func TestVerifySkipsCommandsUnlessRunIsEnabled(t *testing.T) {
+	root := t.TempDir()
+	writeVerifyConfig(t, root, CheckConfig{
+		ID:      "unit",
+		Program: verificationHelperProgram(t),
+		Args:    []string{"-test.run=TestVerificationPassHelperProcess"},
+	})
+
+	report, err := Verify(root, Options{MaxFileBytes: 1 << 20}, "", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Checks) != 1 || report.Checks[0].Status != "skipped" || report.Summary.Skipped != 1 {
+		t.Fatalf("expected a skipped check, got %#v", report)
+	}
+	if _, err := os.Stat(filepath.Join(root, "verification-mutated.txt")); !os.IsNotExist(err) {
+		t.Fatalf("verification command appears to have run: %v", err)
+	}
+
+	if _, err := Verify(root, Options{MaxFileBytes: 1 << 20}, "", true, false); err == nil || !strings.Contains(err.Error(), "--trust-config") {
+		t.Fatalf("expected explicit trust error, got %v", err)
+	}
+}
+
+func TestVerifyRunsInCopyAndRedactsCheckOutput(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "verification-input.txt", "copied input\n")
+	writeVerifyConfig(t, root, CheckConfig{
+		ID:             "unit",
+		Program:        verificationHelperProgram(t),
+		Args:           []string{"-test.run=TestVerificationPassHelperProcess"},
+		TimeoutSeconds: 5,
+	})
+
+	report, err := Verify(root, Options{MaxFileBytes: 1 << 20}, "", true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Checks) != 1 || report.Checks[0].Status != "passed" || report.Summary.Passed != 1 {
+		t.Fatalf("expected a passing check, got %#v", report)
+	}
+	output := report.Checks[0].Stdout
+	if !strings.Contains(output, "copied input") {
+		t.Fatalf("check did not run in the copied workspace: %q", output)
+	}
+	if strings.Contains(output, "AKIA") || strings.Contains(output, "super-secret-value") {
+		t.Fatalf("check output was not redacted: %q", output)
+	}
+	if _, err := os.Stat(filepath.Join(root, "verification-mutated.txt")); !os.IsNotExist(err) {
+		t.Fatalf("verification command modified the source workspace: %v", err)
+	}
+}
+
+func TestCLIVerifyReturnsFailureForFailedCheck(t *testing.T) {
+	root := t.TempDir()
+	writeVerifyConfig(t, root, CheckConfig{
+		ID:      "unit",
+		Program: verificationHelperProgram(t),
+		Args:    []string{"-test.run=TestVerificationFailHelperProcess"},
+	})
+	var stdout, stderr bytes.Buffer
+	err := RunCLI([]string{"verify", "--repo", root, "--run", "--trust-config", "--format", "json", "--fail-on", "none"}, &stdout, &stderr)
+	if ExitCode(err) != 1 {
+		t.Fatalf("expected exit code 1, got %d and error %v", ExitCode(err), err)
+	}
+	var report Report
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Checks) != 1 || report.Checks[0].Status != "failed" || report.Checks[0].ExitCode != 7 {
+		t.Fatalf("unexpected failed check result: %#v", report.Checks)
+	}
+}
+
+func TestVerifyTimesOutCommands(t *testing.T) {
+	root := t.TempDir()
+	writeVerifyConfig(t, root, CheckConfig{
+		ID:             "slow",
+		Program:        verificationHelperProgram(t),
+		Args:           []string{"-test.run=TestVerificationSleepHelperProcess"},
+		TimeoutSeconds: 1,
+	})
+
+	report, err := Verify(root, Options{MaxFileBytes: 1 << 20}, "", true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Checks) != 1 || report.Checks[0].Status != "timed_out" || report.Summary.Failed != 1 {
+		t.Fatalf("expected a timed-out check, got %#v", report)
+	}
+}
+
+func TestVerifyRejectsConfigTraversal(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Verify(root, Options{MaxFileBytes: 1 << 20}, "../outside.yml", false, false); err == nil || !strings.Contains(err.Error(), "within the repository") {
+		t.Fatalf("expected config traversal rejection, got %v", err)
+	}
+}
+
+func TestVerifyRejectsUnknownConfigFields(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, defaultVerifyConfig, "version: 1\nchecks:\n  - id: unit\n    program: go\nunexpected: true\n")
+	if _, err := Verify(root, Options{MaxFileBytes: 1 << 20}, "", false, false); err == nil || !strings.Contains(err.Error(), "field unexpected not found") {
+		t.Fatalf("expected strict config parsing error, got %v", err)
+	}
+}
+
+func TestCappedBufferLimitsOutput(t *testing.T) {
+	var output cappedBuffer
+	output.limit = 4
+	if _, err := output.Write([]byte("abcdef")); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "abcd\n[output truncated]"; got != want {
+		t.Fatalf("unexpected capped output: %q, want %q", got, want)
+	}
+}
+
+func TestVerificationPassHelperProcess(t *testing.T) {
+	if !verificationHelperRequested("TestVerificationPassHelperProcess") {
+		return
+	}
+	data, err := os.ReadFile("verification-input.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("verification-mutated.txt", []byte("only in the copy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%sAKIA%s password=super-secret-value\n", data, strings.Repeat("A", 16))
+}
+
+func TestVerificationFailHelperProcess(t *testing.T) {
+	if !verificationHelperRequested("TestVerificationFailHelperProcess") {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "password=super-secret-value")
+	os.Exit(7)
+}
+
+func TestVerificationSleepHelperProcess(t *testing.T) {
+	if !verificationHelperRequested("TestVerificationSleepHelperProcess") {
+		return
+	}
+	time.Sleep(3 * time.Second)
+}
+
+func verificationHelperProgram(t *testing.T) string {
+	t.Helper()
+	program, err := filepath.Abs(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return program
+}
+
+func verificationHelperRequested(name string) bool {
+	for _, arg := range os.Args {
+		if arg == "-test.run="+name || arg == "-test.run=^"+name+"$" {
+			return true
+		}
+	}
+	return false
+}
+
+func writeVerifyConfig(t *testing.T, root string, checks ...CheckConfig) {
+	t.Helper()
+	data, err := yaml.Marshal(VerifyConfig{Version: 1, Checks: checks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, root, defaultVerifyConfig, string(data))
 }
 
 func findingRules(report Report) map[string]bool {
