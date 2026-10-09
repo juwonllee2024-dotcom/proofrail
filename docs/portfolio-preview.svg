@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+<title id="title">Proofrail — portfolio introduction card</title>
+<desc id="desc">Designed portfolio card, not a running application screenshot. A validation-stage local code-change evidence tool. It reports static findings and supports an explicit trusted verification runner; that runner is not a sandbox.</desc>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101611"/><stop offset="1" stop-color="#242b1b"/></linearGradient></defs>
+<rect width="1600" height="900" rx="32" fill="url(#bg)"/>
+<rect x="64" y="64" width="1472" height="772" rx="24" fill="none" stroke="#d8f36b" stroke-opacity=".25"/>
+<circle cx="1400" cy="180" r="190" fill="none" stroke="#d8f36b" stroke-opacity=".12" stroke-width="30"/>
+<text x="112" y="142" fill="#d8f36b" font-family="Arial,sans-serif" font-size="26" letter-spacing="5">JUWON / THE WORK</text>
+<text x="112" y="288" fill="#f6f8ec" font-family="Arial,sans-serif" font-size="76" font-weight="700">Proofrail</text>
+<rect x="112" y="334" width="140" height="5" fill="#d8f36b"/>
+<text x="112" y="410" fill="#c5cbbc" font-family="Arial,sans-serif" font-size="28">A validation-stage local code-change evidence tool. It reports static findings and</text>
+<text x="112" y="455" fill="#c5cbbc" font-family="Arial,sans-serif" font-size="28">supports an explicit trusted verification runner; that runner is not a sandbox.</text>
+<text x="112" y="730" fill="#d8f36b" font-family="Arial,sans-serif" font-size="22">PORTFOLIO INTRODUCTION CARD — NOT A RUNNING APP CAPTURE</text>
+<text x="112" y="784" fill="#9da991" font-family="Arial,sans-serif" font-size="24">jupt.pages.dev / proofrail</text>
+</svg>
